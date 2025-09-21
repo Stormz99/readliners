@@ -27,14 +27,14 @@ jobs:
       uses: actions/cache@v3
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('app/requirement.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
     
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install -r app/requirement.txt
         pip install pytest pytest-cov flake8
     
     - name: Lint with flake8
@@ -43,12 +43,11 @@ jobs:
         flake8 app --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     
     - name: Run unit tests
-      run: |
-        python -m pytest tests/ -v --cov=app --cov-report=xml
+      run: python -m pytest app/tests/ -v --cov=app --cov-report=xml
     
     - name: Test Flask app startup
       run: |
-        timeout 10s python app.py &
+        timeout 10s python app/app.py &
         sleep 5
         curl -f http://localhost:8080/api/books || exit 1
         pkill -f "python app.py" || true
@@ -79,16 +78,12 @@ jobs:
       run: |
         ssh -i /tmp/ssh_key ubuntu@${HOSTNAME} '
           echo "🚀 Starting deployment..."
-          
-          # Stop the application service
           sudo systemctl stop readliners || echo "Service not running"
           
-          # Backup current deployment
           if [ -d "/opt/readliners" ]; then
             sudo cp -r /opt/readliners /opt/readliners.backup.$(date +%Y%m%d_%H%M%S) || true
           fi
           
-          # Clone or update repository
           if [ -d "/opt/readliners" ]; then
             cd /opt/readliners
             sudo git fetch origin
@@ -103,10 +98,9 @@ jobs:
           
           echo "📦 Installing Python dependencies..."
           sudo pip3 install --upgrade pip
-          sudo pip3 install -r requirements.txt
+          sudo pip3 install -r app/requirement.txt
           
           mkdir -p /opt/readliners/app/logs
-          
           sudo cp /opt/readliners/systemd/readliners.service /etc/systemd/system/
           sudo systemctl daemon-reload
           sudo systemctl enable readliners
