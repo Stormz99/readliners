@@ -1,4 +1,4 @@
-name: Deploy Application
+name: Deploy Readliners App
 
 on:
   push:
@@ -10,23 +10,63 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      # Step 1: Checkout the repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Step 2: Setup Python (optional if you run Python scripts locally on EC2)
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: 3.9
 
-      - name: Add EC2 to known_hosts
+      # Step 3: Setup SSH key and known_hosts
+      - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_HOST_KEY }}" >> ~/.ssh/known_hosts
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOSTNAME }} >> ~/.ssh/known_hosts
 
+      # Step 4: Copy app files to EC2
       - name: Copy app to EC2
         run: |
           scp -i ~/.ssh/id_rsa -r ./app/* ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOSTNAME }}:/home/ubuntu/readliners/
 
-      - name: Restart Flask service on EC2
+      # Step 5: Setup Flask service on EC2
+      - name: Configure Flask systemd service
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOSTNAME }} "sudo systemctl restart readliners.service"
+          ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOSTNAME }} << 'EOF'
+            # Create readliners folder if not exists
+            mkdir -p ~/readliners
+            cd ~/readliners
+
+            # Ensure virtual environment exists
+            python3 -m venv venv
+            source venv/bin/activate
+
+            # Install dependencies
+            pip install --upgrade pip
+            pip install -r requirements.txt
+
+            # Create systemd service file
+            sudo tee /etc/systemd/system/readliners.service > /dev/null << EOL
+            [Unit]
+            Description=Readliners Flask App
+            After=network.target
+
+            [Service]
+            User=ubuntu
+            WorkingDirectory=/home/ubuntu/readliners
+            ExecStart=/home/ubuntu/readliners/venv/bin/gunicorn --bind 0.0.0.0:8080 wsgi:app
+            Restart=always
+
+            [Install]
+            WantedBy=multi-user.target
+            EOL
+
+            # Reload systemd and start service
+            sudo systemctl daemon-reload
+            sudo systemctl enable readliners.service
+            sudo systemctl restart readliners.service
+          EOF
