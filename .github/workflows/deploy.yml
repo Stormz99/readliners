@@ -10,17 +10,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Setup Python (optional, just for local scripts in workflow)
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: 3.9
 
-      # Step 3: Setup SSH
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -28,23 +25,21 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOSTNAME }} >> ~/.ssh/known_hosts
 
-      # Step 4: Copy files to EC2
       - name: Copy repo to EC2
         run: |
           scp -i ~/.ssh/id_rsa -r ./* ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOSTNAME }}:/home/ubuntu/readliners/
 
-      # Step 5: Deploy Flask app
       - name: Deploy Flask App on EC2
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOSTNAME }} bash << 'EOF'
+          ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOSTNAME }} bash -c "
             set -e
             cd /home/ubuntu/readliners
 
             # Ensure wsgi.py exists
             if [ ! -f wsgi.py ]; then
-              echo "from app import app" > wsgi.py
-              echo "if __name__ == '__main__':" >> wsgi.py
-              echo "    app.run()" >> wsgi.py
+              echo 'from app import app' > wsgi.py
+              echo 'if __name__ == \"__main__\":' >> wsgi.py
+              echo '    app.run()' >> wsgi.py
             fi
 
             # Setup virtual environment
@@ -71,8 +66,8 @@ Restart=always
 WantedBy=multi-user.target
 EOL'
 
-            # Reload & restart service
+            # Reload and restart service
             sudo systemctl daemon-reload
             sudo systemctl enable readliners.service
             sudo systemctl restart readliners.service
-EOF
+          "
