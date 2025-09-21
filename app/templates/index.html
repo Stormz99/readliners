@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Readliners - Premium Bookstore</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" 
+    rel="stylesheet" 
+    integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" 
+    crossorigin="anonymous" 
+    referrerpolicy="no-referrer" />
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="brand">
+                    <i class="fas fa-book-open"></i>
+                    <span class="brand-name">Readliners</span>
+                </div>
+                <div class="nav-menu">
+                    <button class="nav-btn active" data-tab="browse">
+                        <i class="fas fa-search"></i> Browse
+                    </button>
+                    <button class="nav-btn" data-tab="manage">
+                        <i class="fas fa-cog"></i> Manage
+                    </button>
+                    <button class="nav-btn" data-tab="stats">
+                        <i class="fas fa-chart-bar"></i> Stats
+                    </button>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Browse Tab -->
+        <div id="browse" class="tab-content active">
+            <div class="content-header">
+                <h1>Book Collection</h1>
+                <div class="filter-controls">
+                    <button id="showAll" class="filter-btn active">All Books</button>
+                    <button id="showAvailable" class="filter-btn">Available Only</button>
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="searchInput" placeholder="Search books...">
+                    </div>
+                </div>
+            </div>
+            
+            <div id="booksGrid" class="books-grid">
+                <!-- Books will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Manage Tab -->
+        <div id="manage" class="tab-content">
+            <div class="content-header">
+                <h1>Book Management</h1>
+            </div>
+            
+            <div class="manage-section">
+                <div class="add-book-form">
+                    <h2><i class="fas fa-plus"></i> Add New Book</h2>
+                    <form id="addBookForm">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="bookTitle">Title *</label>
+                                <input type="text" id="bookTitle" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="bookAuthor">Author *</label>
+                                <input type="text" id="bookAuthor" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="bookIsbn">ISBN *</label>
+                                <input type="text" id="bookIsbn" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="bookGenre">Genre</label>
+                                <select id="bookGenre">
+                                    <option value="Fiction">Fiction</option>
+                                    <option value="Non-Fiction">Non-Fiction</option>
+                                    <option value="Mystery">Mystery</option>
+                                    <option value="Romance">Romance</option>
+                                    <option value="Sci-Fi">Sci-Fi</option>
+                                    <option value="Biography">Biography</option>
+                                    <option value="History">History</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="bookDescription">Description</label>
+                            <textarea id="bookDescription" rows="3"></textarea>
+                        </div>
+                        <button type="submit" class="submit-btn">
+                            <i class="fas fa-plus"></i> Add Book
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Tab -->
+        <div id="stats" class="tab-content">
+            <div class="content-header">
+                <h1>Bookstore Statistics</h1>
+            </div>
+            
+            <div id="statsContainer" class="stats-container">
+                <!-- Stats will be loaded here -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Book Details Modal -->
+    <div id="bookModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="bookDetails">
+                <!-- Book details will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Rent Modal -->
+    <div id="rentModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div class="rent-form">
+                <h3>Rent Book</h3>
+                <form id="rentForm">
+                    <div class="form-group">
+                        <label for="renterName">Your Name *</label>
+                        <input type="text" id="renterName" required>
+                    </div>
+                    <button type="submit" class="submit-btn">
+                        <i class="fas fa-handshake"></i> Rent Book
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div id="notification" class="notification">
+        <span class="notification-text"></span>
+    </div>
+
+    <script>
+        let allBooks = [];
+        let currentBookId = null;
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            loadBooks();
+            loadStats();
+            setupEventListeners();
+        });
+
+        // Setup event listeners
+        function setupEventListeners() {
+            // Tab switching
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const tabName = this.dataset.tab;
+                    switchTab(tabName);
+                });
+            });
+
+            // Filter buttons
+            document.getElementById('showAll').addEventListener('click', () => {
+                document.getElementById('showAll').classList.add('active');
+                document.getElementById('showAvailable').classList.remove('active');
+                displayBooks(allBooks);
+            });
+            
+            document.getElementById('showAvailable').addEventListener('click', () => {
+                document.getElementById('showAvailable').classList.add('active');
+                document.getElementById('showAll').classList.remove('active');
+                const available = allBooks.filter(book => book.available);
+                displayBooks(available);
+            });
+
+            // Search functionality
+            document.getElementById('searchInput').addEventListener('input', function() {
+                const query = this.value.toLowerCase();
+                const filtered = allBooks.filter(book => 
+                    book.title.toLowerCase().includes(query) ||
+                    book.author.toLowerCase().includes(query) ||
+                    book.genre.toLowerCase().includes(query)
+                );
+                displayBooks(filtered);
+            });
+
+            // Add book form
+            document.getElementById('addBookForm').addEventListener('submit', handleAddBook);
+
+            // Rent form
+            document.getElementById('rentForm').addEventListener('submit', handleRentBook);
+
+            // Modal close buttons
+            document.querySelectorAll('.close').forEach(closeBtn => {
+                closeBtn.addEventListener('click', function() {
+                    this.closest('.modal').style.display = 'none';
+                });
+            });
+
+            // Click outside modal to close
+            window.addEventListener('click', function(event) {
+                if (event.target.classList.contains('modal')) {
+                    event.target.style.display = 'none';
+                }
+            });
+        }
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            
+            document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+            
+            if (tabName === 'stats') {
+                loadStats();
+            }
+        }
+
+        // Load books from API
+        async function loadBooks() {
+            try {
+                const response = await fetch('/api/books');
+                const data = await response.json();
+                if (data.status === 'success') {
+                    allBooks = data.data;
+                    displayBooks(allBooks);
+                }
+            } catch (error) {
+                showNotification('Failed to load books', 'error');
+            }
+        }
+
+        // Display books in grid
+        function displayBooks(books) {
+            const grid = document.getElementById('booksGrid');
+            
+            if (books.length === 0) {
+                grid.innerHTML = '<p class="no-books">No books found.</p>';
+                return;
+            }
+            
+            grid.innerHTML = books.map(book => `
+                <div class="book-card" onclick="showBookDetails(${book.id})">
+                    <div class="book-status ${book.available ? 'status-available' : 'status-rented'}">
+                        ${book.available ? 'Available' : 'Rented'}
+                    </div>
+                    <h3 class="book-title">${book.title}</h3>
+                    <p class="book-author">by ${book.author}</p>
+                    <span class="book-genre">${book.genre}</span>
+                    <div class="book-actions">
+                        ${book.available ? 
+                            `<button class="btn btn-primary" onclick="event.stopPropagation(); openRentModal(${book.id})">
+                                <i class="fas fa-handshake"></i> Rent
+                            </button>` :
+                            `<button class="btn btn-success" onclick="event.stopPropagation(); returnBook(${book.id})">
+                                <i class="fas fa-undo"></i> Return
+                            </button>`
+                        }
+                        <button class="btn btn-danger" onclick="event.stopPropagation(); deleteBook(${book.id})">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Show book details modal
+        function showBookDetails(bookId) {
+            const book = allBooks.find(b => b.id === bookId);
+            if (!book) return;
+            
+            document.getElementById('bookDetails').innerHTML = `
+                <h2>${book.title}</h2>
+                <p><strong>Author:</strong> ${book.author}</p>
+                <p><strong>ISBN:</strong> ${book.isbn}</p>
+                <p><strong>Genre:</strong> ${book.genre}</p>
+                <p><strong>Status:</strong> ${book.available ? 'Available' : `Rented by ${book.rented_by}`}</p>
+                ${book.rent_date ? `<p><strong>Rent Date:</strong> ${book.rent_date}</p>` : ''}
+                ${book.return_date ? `<p><strong>Return Date:</strong> ${book.return_date}</p>` : ''}
+                ${book.description ? `<p><strong>Description:</strong> ${book.description}</p>` : ''}
+            `;
+            
+            document.getElementById('bookModal').style.display = 'block';
+        }
+
+        // Open rent modal
+        function openRentModal(bookId) {
+            currentBookId = bookId;
+            document.getElementById('rentModal').style.display = 'block';
+        }
+
+        // Handle add book form
+        async function handleAddBook(e) {
+            e.preventDefault();
+            
+            const formData = {
+                title: document.getElementById('bookTitle').value,
+                author: document.getElementById('bookAuthor').value,
+                isbn: document.getElementById('bookIsbn').value,
+                genre: document.getElementById('bookGenre').value,
+                description: document.getElementById('bookDescription').value
+            };
+            
+            try {
+                const response = await fetch('/api/books', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showNotification('Book added successfully!');
+                    document.getElementById('addBookForm').reset();
+                    loadBooks();
+                    switchTab('browse');
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            } catch (error) {
+                showNotification('Failed to add book', 'error');
+            }
+        }
+
+        // Handle rent book
+        async function handleRentBook(e) {
+            e.preventDefault();
+            
+            const renterName = document.getElementById('renterName').value;
+            
+            try {
+                const response = await fetch(`/api/books/${currentBookId}/rent`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ rented_by: renterName })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showNotification(data.message);
+                    document.getElementById('rentForm').reset();
+                    document.getElementById('rentModal').style.display = 'none';
+                    loadBooks();
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            } catch (error) {
+                showNotification('Failed to rent book', 'error');
+            }
+        }
+
+        // Return book
+        async function returnBook(bookId) {
+            if (!confirm('Are you sure you want to return this book?')) return;
+            
+            try {
+                const response = await fetch(`/api/books/${bookId}/return`, {
+                    method: 'PUT'
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showNotification(data.message);
+                    loadBooks();
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            } catch (error) {
+                showNotification('Failed to return book', 'error');
+            }
+        }
+
+        // Delete book
+        async function deleteBook(bookId) {
+            if (!confirm('Are you sure you want to delete this book?')) return;
+            
+            try {
+                const response = await fetch(`/api/books/${bookId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showNotification(data.message);
+                    loadBooks();
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            } catch (error) {
+                showNotification('Failed to delete book', 'error');
+            }
+        }
+
+        // Load statistics
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    displayStats(data.data);
+                }
+            } catch (error) {
+                showNotification('Failed to load statistics', 'error');
+            }
+        }
+
+        // Display statistics
+        function displayStats(stats) {
+            const container = document.getElementById('statsContainer');
+            
+            let genresHtml = '';
+            for (const [genre, count] of Object.entries(stats.genres)) {
+                genresHtml += `<div class="genre-stat"><strong>${genre}:</strong> ${count} books</div>`;
+            }
+            
+            container.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-number">${stats.total_books}</div>
+                    <div class="stat-label">Total Books</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.available_books}</div>
+                    <div class="stat-label">Available</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.rented_books}</div>
+                    <div class="stat-label">Rented</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label" style="margin-bottom: 1rem;">Genres</div>
+                    ${genresHtml}
+                </div>
+            `;
+        }
+
+        // Show notification
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            const text = notification.querySelector('.notification-text');
+            
+            text.textContent = message;
+            notification.className = `notification ${type}`;
+            notification.classList.add('show');
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

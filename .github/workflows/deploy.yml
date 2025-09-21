@@ -1,0 +1,206 @@
+name: Deploy Readliners Bookstore
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  AWS_REGION: ap-northeast-3
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Test Application
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r app/requirements.txt
+        pip install pytest pytest-cov flake8
+    
+    - name: Lint with flake8
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 app --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings. GitHub editor is 127 chars wide
+        flake8 app --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Run unit tests
+      run: |
+        cd app
+        python -m pytest tests/ -v --cov=app --cov-report=xml
+    
+    - name: Test Flask app startup
+      run: |
+        cd app
+        timeout 10s python app.py &
+        sleep 5
+        curl -f http://localhost:8080/api/books || exit 1
+        pkill -f "python app.py" || true
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    name: Deploy to EC2
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v3
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Verify AWS connection
+      run: |
+        aws sts get-caller-identity
+        aws ec2 describe-regions --region-names ${{ env.AWS_REGION }}
+    
+    - name: Setup SSH key
+      run: |
+        echo "${{ secrets.EC2_SSH_KEY }}" > /tmp/ssh_key
+        chmod 600 /tmp/ssh_key
+        ssh-keyscan -H ${{ secrets.EC2_HOSTNAME }} >> ~/.ssh/known_hosts
+    
+    - name: Test SSH connection
+      run: |
+        ssh -i /tmp/ssh_key -o ConnectTimeout=10 ubuntu@${{ secrets.EC2_HOSTNAME }} "echo 'SSH connection successful'"
+    
+    - name: Deploy application to EC2
+      env:
+        HOSTNAME: ${{ secrets.EC2_HOSTNAME }}
+      run: |
+        ssh -i /tmp/ssh_key ubuntu@${HOSTNAME} '
+          echo "🚀 Starting deployment..."
+          
+          # Stop the application service
+          sudo systemctl stop readliners || echo "Service not running"
+          
+          # Backup current deployment (if exists)
+          if [ -d "/opt/readliners" ]; then
+            sudo cp -r /opt/readliners /opt/readliners.backup.$(date +%Y%m%d_%H%M%S) || true
+          fi
+          
+          # Clone or update repository
+          if [ -d "/opt/readliners" ]; then
+            echo "📥 Updating existing repository..."
+            cd /opt/readliners
+            sudo git fetch origin
+            sudo git reset --hard origin/main
+            sudo git clean -fd
+          else
+            echo "📥 Cloning repository..."
+            sudo git clone https://github.com/${{ github.repository }} /opt/readliners
+            cd /opt/readliners
+          fi
+          
+          # Set permissions
+          sudo chown -R ubuntu:ubuntu /opt/readliners
+          
+          # Install/update Python dependencies
+          echo "📦 Installing Python dependencies..."
+          sudo pip3 install --upgrade pip
+          sudo pip3 install -r app/requirements.txt
+          
+          # Create logs directory
+          mkdir -p /opt/readliners/app/logs
+          
+          # Update systemd service file
+          sudo cp /opt/readliners/systemd/readliners.service /etc/systemd/system/
+          sudo systemctl daemon-reload
+          
+          # Start the application
+          echo "🚀 Starting application..."
+          sudo systemctl enable readliners
+          sudo systemctl start readliners
+          
+          # Wait a moment and check status
+          sleep 5
+          sudo systemctl status readliners
+          
+          # Test application endpoint
+          echo "🧪 Testing application..."
+          curl -f http://localhost:8080/api/books || exit 1
+          
+          echo "✅ Deployment completed successfully!"
+        '
+    
+    - name: Verify deployment
+      run: |
+        echo "🔍 Verifying deployment..."
+        sleep 10
+        curl -f http://${{ secrets.EC2_HOSTNAME }}:8080/api/books
+        echo "✅ Application is responding correctly!"
+    
+    - name: Clean up SSH key
+      if: always()
+      run: |
+        rm -f /tmp/ssh_key
+    
+    - name: Deployment notification
+      if: always()
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "✅ Deployment completed successfully!"
+          echo "🌐 Application URL: http://${{ secrets.EC2_HOSTNAME }}:8080"
+        else
+          echo "❌ Deployment failed!"
+        fi
+
+  cleanup:
+    needs: [test, deploy]
+    runs-on: ubuntu-latest
+    name: Cleanup old deployments
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v3
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Setup SSH key
+      run: |
+        echo "${{ secrets.EC2_SSH_KEY }}" > /tmp/ssh_key
+        chmod 600 /tmp/ssh_key
+        ssh-keyscan -H ${{ secrets.EC2_HOSTNAME }} >> ~/.ssh/known_hosts
+    
+    - name: Clean old backups
+      run: |
+        ssh -i /tmp/ssh_key ubuntu@${{ secrets.EC2_HOSTNAME }} '
+          echo "🧹 Cleaning up old backups..."
+          cd /opt
+          # Keep only the 3 most recent backups
+          ls -t readliners.backup.* 2>/dev/null | tail -n +4 | xargs sudo rm -rf || true
+          echo "✅ Cleanup completed!"
+        '
+    
+    - name: Clean up SSH key
+      if: always()
+      run: |
+        rm -f /tmp/ssh_key

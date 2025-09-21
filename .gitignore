@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyc.*
+*.pyo.*
+*.pyd.*
+*.log
+*.sqlite3
+venv/
+env/
+ENV/
+.Python
+instance/
+.webassets-cache
+
+# Flask
+*.db
+*.sqlite
+*.sqlite3
+*.env
+*.DS_Store
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# GitHub Actions
+.github/secrets.yml

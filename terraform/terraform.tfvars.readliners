@@ -1,0 +1,27 @@
+# Region
+region = "ap-northeast-3"
+
+# Existing resources
+vpc_id              = "vpc-00ffe463659a905fd"
+internet_gateway_id = "igw-0ab67e09d24810be0"
+
+# Subnet
+subnet_cidr = "10.0.25.0/24"
+
+# Key pair
+key_name = "abiodun-readliner-keypair"
+
+# Instance
+instance_type = "t3.micro"
+
+# AMI ID
+ubuntu_ami_id = "ami-03ab230a152fe777b"
+
+
+# Security
+allowed_ssh_cidrs = ["0.0.0.0/0"]
+
+# Tags
+environment  = "dev"
+project_name = "Qucoon-Lab"
+owner        = "Abiodun"
