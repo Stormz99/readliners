@@ -10,17 +10,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repository
+      # Step 1: Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Setup Python (optional if you run Python scripts locally on EC2)
+      # Step 2: Setup Python (optional, just for local scripts in workflow)
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: 3.9
 
-      # Step 3: Setup SSH key and known_hosts
+      # Step 3: Setup SSH
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -28,45 +28,51 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOSTNAME }} >> ~/.ssh/known_hosts
 
-      # Step 4: Copy app files to EC2
-      - name: Copy app to EC2
+      # Step 4: Copy files to EC2
+      - name: Copy repo to EC2
         run: |
-          scp -i ~/.ssh/id_rsa -r ./app/* ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOSTNAME }}:/home/ubuntu/readliners/
+          scp -i ~/.ssh/id_rsa -r ./* ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOSTNAME }}:/home/ubuntu/readliners/
 
-      # Step 5: Setup Flask service on EC2
-      - name: Configure Flask systemd service
+      # Step 5: Deploy Flask app
+      - name: Deploy Flask App on EC2
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOSTNAME }} << 'EOF'
-            # Create readliners folder if not exists
-            mkdir -p ~/readliners
-            cd ~/readliners
+          ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOSTNAME }} bash << 'EOF'
+            set -e
+            cd /home/ubuntu/readliners
 
-            # Ensure virtual environment exists
-            python3 -m venv venv
-            source venv/bin/activate
+            # Ensure wsgi.py exists
+            if [ ! -f wsgi.py ]; then
+              echo "from app import app" > wsgi.py
+              echo "if __name__ == '__main__':" >> wsgi.py
+              echo "    app.run()" >> wsgi.py
+            fi
+
+            # Setup virtual environment
+            python3 -m venv venv || true
+            source venv/bin/activate || true
 
             # Install dependencies
-            pip install --upgrade pip
-            pip install -r requirements.txt
+            pip install --upgrade pip || true
+            pip install -r requirement.txt || true
 
-            # Create systemd service file
-            sudo tee /etc/systemd/system/readliners.service > /dev/null << EOL
-            [Unit]
-            Description=Readliners Flask App
-            After=network.target
+            # Create systemd service
+            sudo bash -c 'cat > /etc/systemd/system/readliners.service <<EOL
+[Unit]
+Description=Readliners Flask App
+After=network.target
 
-            [Service]
-            User=ubuntu
-            WorkingDirectory=/home/ubuntu/readliners
-            ExecStart=/home/ubuntu/readliners/venv/bin/gunicorn --bind 0.0.0.0:8080 wsgi:app
-            Restart=always
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/readliners
+ExecStart=/home/ubuntu/readliners/venv/bin/gunicorn --bind 0.0.0.0:8080 wsgi:app
+Restart=always
 
-            [Install]
-            WantedBy=multi-user.target
-            EOL
+[Install]
+WantedBy=multi-user.target
+EOL'
 
-            # Reload systemd and start service
+            # Reload & restart service
             sudo systemctl daemon-reload
             sudo systemctl enable readliners.service
             sudo systemctl restart readliners.service
-          EOF
+EOF
