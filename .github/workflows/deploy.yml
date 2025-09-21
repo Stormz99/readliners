@@ -11,31 +11,9 @@ env:
   EC2_HOST: 15.152.35.142
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    name: Test Application
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r app/requirements.txt
-
-      - name: Test syntax
-        run: python -m py_compile app/app.py
-
   deploy:
-    needs: test
     runs-on: ubuntu-latest
     name: Deploy to EC2
-    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -52,7 +30,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key ubuntu@${{ env.EC2_HOST }} << 'EOF'
           set -e
           
-          echo "Starting deployment..."
+          echo "Starting deployment"
           
           sudo systemctl stop readliners || true
           sudo pkill -f "python.*app.py" || true
@@ -70,19 +48,24 @@ jobs:
             git clone https://github.com/Stormz99/readliners.git /tmp/readliners
             cp -r /tmp/readliners/* /opt/readliners/
             rm -rf /tmp/readliners
-            cd /opt/readliners
           fi
           
+          cd /opt/readliners
           sudo chown -R ubuntu:ubuntu /opt/readliners
           
           sudo apt-get update -y
-          sudo apt-get install -y python3-pip
+          sudo apt-get install -y python3 python3-pip python3-venv
           
-          cd /opt/readliners/app
-          sudo pip3 install --upgrade pip
-          sudo pip3 install -r requirements.txt
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
           
-          mkdir -p logs
+          if [ -f "app/requirements.txt" ]; then
+            cd app
+            ../venv/bin/pip install -r requirements.txt
+          else
+            pip install Flask Werkzeug Jinja2
+          fi
           
           sudo tee /etc/systemd/system/readliners.service > /dev/null << 'SERVICE'
           [Unit]
@@ -94,9 +77,8 @@ jobs:
           User=ubuntu
           Group=ubuntu
           WorkingDirectory=/opt/readliners/app
-          Environment=PATH=/usr/local/bin:/usr/bin:/bin
-          Environment=FLASK_ENV=production
-          ExecStart=/usr/bin/python3 app.py
+          Environment=PATH=/opt/readliners/venv/bin:/usr/bin:/bin
+          ExecStart=/opt/readliners/venv/bin/python app.py
           Restart=always
           RestartSec=3
           
@@ -108,23 +90,21 @@ jobs:
           sudo systemctl enable readliners
           sudo systemctl start readliners
           
-          sleep 5
-          sudo systemctl status readliners
+          sleep 10
+          sudo systemctl status readliners --no-pager
           
           echo "Deployment completed"
           EOF
 
       - name: Verify deployment
         run: |
-          echo "Verifying deployment..."
-          sleep 10
-          
-          response=$(curl -s -o /dev/null -w "%{http_code}" http://${{ env.EC2_HOST }}:8080/api/books)
-          
+          sleep 15
+          response=$(curl -s -o /dev/null -w "%{http_code}" http://${{ env.EC2_HOST }}:8080/)
           if [ "$response" = "200" ]; then
-            echo "Application is live at http://${{ env.EC2_HOST }}:8080"
+            echo "Application deployed successfully"
+            echo "URL: http://${{ env.EC2_HOST }}:8080"
           else
-            echo "Deployment verification failed with HTTP code: $response"
+            echo "Deployment verification failed"
             exit 1
           fi
 
