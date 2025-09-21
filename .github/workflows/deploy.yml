@@ -2,8 +2,9 @@ name: Deploy Readliners Bookstore
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:  # Allow manual trigger
+    branches:
+      - main
+  workflow_dispatch:
 
 env:
   AWS_REGION: ap-northeast-3
@@ -13,254 +14,120 @@ jobs:
   test:
     runs-on: ubuntu-latest
     name: Test Application
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r app/requirements.txt
-        pip install pytest || echo "pytest not required for basic test"
-    
-    - name: Basic syntax check
-      run: |
-        python -m py_compile app/app.py
-        echo "✅ Python syntax check passed"
-    
-    - name: Test Flask app startup (basic)
-      run: |
-        cd app
-        python -c "from app import app; print('✅ Flask app imports successfully')"
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r app/requirements.txt
+
+      - name: Test syntax
+        run: python -m py_compile app/app.py
 
   deploy:
     needs: test
     runs-on: ubuntu-latest
     name: Deploy to EC2
     if: github.ref == 'refs/heads/main'
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup SSH
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
-        chmod 600 ~/.ssh/deploy_key
-        ssh-keyscan -H ${{ env.EC2_HOST }} >> ~/.ssh/known_hosts
-        echo "✅ SSH setup complete"
-    
-    - name: Test SSH connection
-      run: |
-        ssh -i ~/.ssh/deploy_key -o ConnectTimeout=30 ubuntu@${{ env.EC2_HOST }} "echo '✅ SSH connection successful'"
-    
-    - name: Deploy application
-      run: |
-        ssh -i ~/.ssh/deploy_key ubuntu@${{ env.EC2_HOST }} << 'EOF'
-        set -e
-        echo "🚀 Starting deployment on $(hostname)..."
-        
-        # Stop application if running
-        echo "🛑 Stopping application service..."
-        sudo systemctl stop readliners || echo "Service not running"
-        sudo pkill -f "python.*app.py" || echo "No Python processes to kill"
-        
-        # Create application directory if it doesn't exist
-        echo "📁 Setting up directories..."
-        sudo mkdir -p /opt/readliners
-        sudo chown -R ubuntu:ubuntu /opt/readliners
-        
-        # Backup existing deployment
-        if [ -d "/opt/readliners/.git" ]; then
-          echo "📦 Backing up existing deployment..."
-          sudo cp -r /opt/readliners /opt/readliners.backup.$(date +%Y%m%d_%H%M%S) || true
-        fi
-        
-        # Clone or update repository
-        if [ -d "/opt/readliners/.git" ]; then
-          echo "📥 Updating repository..."
-          cd /opt/readliners
-          git fetch origin main
-          git reset --hard origin/main
-          git clean -fd
-        else
-          echo "📥 Cloning repository..."
-          rm -rf /opt/readliners/*
-          git clone https://github.com/Stormz99/readliners.git /tmp/readliners
-          cp -r /tmp/readliners/* /opt/readliners/
-          rm -rf /tmp/readliners
-          cd /opt/readliners
-        fi
-        
-        # Ensure correct ownership
-        sudo chown -R ubuntu:ubuntu /opt/readliners
-        
-        # Install system dependencies if needed
-        echo "📦 Installing system dependencies..."
-        sudo apt-get update
-        sudo apt-get install -y python3-pip python3-venv
-        
-        # Install Python dependencies
-        echo "🐍 Installing Python dependencies..."
-        cd /opt/readliners/app
-        sudo pip3 install --upgrade pip
-        sudo pip3 install -r requirements.txt
-        
-        # Create logs directory
-        mkdir -p /opt/readliners/app/logs
-        
-        # Create systemd service file
-        echo "⚙️ Creating systemd service..."
-        sudo tee /etc/systemd/system/readliners.service > /dev/null << 'SERVICE'
-[Unit]
-Description=Readliners Bookstore Flask Application
-Documentation=https://github.com/Stormz99/readliners
-After=network.target
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-[Service]
-Type=simple
-User=ubuntu
-Group=ubuntu
-WorkingDirectory=/opt/readliners/app
-Environment="PATH=/usr/local/bin:/usr/bin:/bin"
-Environment="FLASK_ENV=production"
-Environment="PYTHONPATH=/opt/readliners/app"
-ExecStart=/usr/bin/python3 app.py
-ExecReload=/bin/kill -s HUP $MAINPID
-Restart=always
-RestartSec=3
-KillMode=mixed
-TimeoutStopSec=5
-StandardOutput=journal
-StandardError=journal
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.EC2_HOST }} >> ~/.ssh/known_hosts
 
-[Install]
-WantedBy=multi-user.target
-SERVICE
-        
-        # Reload systemd and enable service
-        echo "🔄 Reloading systemd..."
-        sudo systemctl daemon-reload
-        sudo systemctl enable readliners
-        
-        # Configure firewall (if ufw is active)
-        echo "🔥 Configuring firewall..."
-        if sudo ufw --force enable 2>/dev/null; then
-          sudo ufw allow 22/tcp
-          sudo ufw allow 8080/tcp
-          echo "✅ Firewall configured"
-        else
-          echo "ℹ️ UFW not available or already configured"
-        fi
-        
-        # Start the application
-        echo "🚀 Starting application..."
-        sudo systemctl start readliners
-        
-        # Wait for application to start
-        echo "⏳ Waiting for application to start..."
-        sleep 10
-        
-        # Check service status
-        echo "📊 Checking service status..."
-        sudo systemctl is-active readliners
-        sudo systemctl status readliners --no-pager --lines=5
-        
-        echo "✅ Deployment completed successfully!"
-        EOF
-    
-    - name: Verify deployment
-      run: |
-        echo "🔍 Verifying deployment..."
-        sleep 15
-        
-        # Test if application responds
-        echo "🧪 Testing application response..."
-        response=$(curl -s -o /dev/null -w "%{http_code}" http://${{ env.EC2_HOST }}:8080/api/books || echo "000")
-        
-        if [ "$response" = "200" ]; then
-          echo "✅ Application is responding correctly!"
-          echo "🌐 Application URL: http://${{ env.EC2_HOST }}:8080"
-        else
-          echo "⚠️ Application responded with HTTP code: $response"
-          echo "🔍 Checking application status..."
-          ssh -i ~/.ssh/deploy_key ubuntu@${{ env.EC2_HOST }} "
-            sudo systemctl status readliners --no-pager
-            sudo journalctl -u readliners --no-pager --lines=10
-            curl -v http://localhost:8080/api/books || echo 'Local curl failed'
-          "
-        fi
-    
-    - name: Deployment summary
-      if: always()
-      run: |
-        echo "📋 Deployment Summary"
-        echo "===================="
-        echo "Repository: https://github.com/Stormz99/readliners"
-        echo "Target Server: ${{ env.EC2_HOST }}"
-        echo "Application URL: http://${{ env.EC2_HOST }}:8080"
-        echo "Status: ${{ job.status }}"
-        
-        if [ "${{ job.status }}" = "success" ]; then
-          echo ""
-          echo "✅ SUCCESS: Readliners is now live!"
-          echo "🌐 Visit: http://${{ env.EC2_HOST }}:8080"
-          echo ""
-          echo "API Endpoints:"
-          echo "- Books: http://${{ env.EC2_HOST }}:8080/api/books"
-          echo "- Stats: http://${{ env.EC2_HOST }}:8080/api/stats"
-        else
-          echo ""
-          echo "❌ DEPLOYMENT FAILED"
-          echo "Check the logs above for details"
-        fi
-    
-    - name: Clean up SSH key
-      if: always()
-      run: |
-        rm -f ~/.ssh/deploy_key
+      - name: Deploy application
+        run: |
+          ssh -i ~/.ssh/deploy_key ubuntu@${{ env.EC2_HOST }} << 'EOF'
+          set -e
+          
+          echo "Starting deployment..."
+          
+          sudo systemctl stop readliners || true
+          sudo pkill -f "python.*app.py" || true
+          
+          sudo mkdir -p /opt/readliners
+          sudo chown -R ubuntu:ubuntu /opt/readliners
+          
+          if [ -d "/opt/readliners/.git" ]; then
+            cd /opt/readliners
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
+          else
+            rm -rf /opt/readliners/*
+            git clone https://github.com/Stormz99/readliners.git /tmp/readliners
+            cp -r /tmp/readliners/* /opt/readliners/
+            rm -rf /tmp/readliners
+            cd /opt/readliners
+          fi
+          
+          sudo chown -R ubuntu:ubuntu /opt/readliners
+          
+          sudo apt-get update -y
+          sudo apt-get install -y python3-pip
+          
+          cd /opt/readliners/app
+          sudo pip3 install --upgrade pip
+          sudo pip3 install -r requirements.txt
+          
+          mkdir -p logs
+          
+          sudo tee /etc/systemd/system/readliners.service > /dev/null << 'SERVICE'
+          [Unit]
+          Description=Readliners Bookstore Flask Application
+          After=network.target
+          
+          [Service]
+          Type=simple
+          User=ubuntu
+          Group=ubuntu
+          WorkingDirectory=/opt/readliners/app
+          Environment=PATH=/usr/local/bin:/usr/bin:/bin
+          Environment=FLASK_ENV=production
+          ExecStart=/usr/bin/python3 app.py
+          Restart=always
+          RestartSec=3
+          
+          [Install]
+          WantedBy=multi-user.target
+          SERVICE
+          
+          sudo systemctl daemon-reload
+          sudo systemctl enable readliners
+          sudo systemctl start readliners
+          
+          sleep 5
+          sudo systemctl status readliners
+          
+          echo "Deployment completed"
+          EOF
 
-  post-deploy:
-    needs: deploy
-    runs-on: ubuntu-latest
-    name: Post-deployment checks
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-    - name: Final health check
-      run: |
-        echo "🏥 Final health check..."
-        sleep 5
-        
-        # Check main page
-        if curl -f -s http://${{ env.EC2_HOST }}:8080/ > /dev/null; then
-          echo "✅ Main page accessible"
-        else
-          echo "⚠️ Main page not accessible"
-        fi
-        
-        # Check API endpoints
-        if curl -f -s http://${{ env.EC2_HOST }}:8080/api/books > /dev/null; then
-          echo "✅ API endpoints accessible"
-        else
-          echo "⚠️ API endpoints not accessible"
-        fi
-        
-        # Check stats
-        if curl -f -s http://${{ env.EC2_HOST }}:8080/api/stats > /dev/null; then
-          echo "✅ Stats endpoint accessible"
-        else
-          echo "⚠️ Stats endpoint not accessible"
-        fi
-        
-        echo ""
-        echo "🎉 Deployment Complete!"
-        echo "🌐 Your Readliners bookstore is live at:"
-        echo "   http://${{ env.EC2_HOST }}:8080"
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment..."
+          sleep 10
+          
+          response=$(curl -s -o /dev/null -w "%{http_code}" http://${{ env.EC2_HOST }}:8080/api/books)
+          
+          if [ "$response" = "200" ]; then
+            echo "Application is live at http://${{ env.EC2_HOST }}:8080"
+          else
+            echo "Deployment verification failed with HTTP code: $response"
+            exit 1
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
