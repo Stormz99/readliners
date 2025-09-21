@@ -16,17 +16,13 @@ A modern Flask-based bookstore application with complete CRUD functionality, dep
 
 ## Architecture
 
-```
-┌─────────────────┐    ┌──────────────┐    ┌─────────────────┐
-│   GitHub Repo   │────│ GitHub Actions│────│   AWS EC2      │
-│                 │    │   CI/CD       │    │  (Ubuntu)      │
-└─────────────────┘    └──────────────┘    └─────────────────┘
-                                                    │
-                                           ┌─────────────────┐
-                                           │ Flask App :8080 │
-                                           │  Readliners     │
-                                           └─────────────────┘
-```
+<p align="center">
+  <a href="images/readliner.drawio.png">
+    <img src="images/readliner.drawio.png" alt="Readliner Architecture" width="600"/>
+  </a>
+</p>
+
+
 
 ## Project Structure
 
