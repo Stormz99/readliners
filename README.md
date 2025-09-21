@@ -277,4 +277,20 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Access the application**: `http://<your-ec2-public-ip>:8080`
 
-![Readliners Screenshot](https://via.placeholder.com/800x400/2c3e50/ffffff?text=Readliners+Bookstore)# readliners
+## Screenshots
+
+<p align="center">
+  <img src="images/confirmation-display-on-public-ip-step17.png" alt="Confirmation Step 17" width="600"/>
+</p>
+
+<p align="center">
+  <img src="images/confirmation-of-change-to-application-step19.png" alt="Confirmation Step 19" width="600"/>
+</p>
+
+<p align="center">
+  <img src="images/confirmation-of-pipeline-step-18.png" alt="Confirmation Step 18" width="600"/>
+</p>
+
+<p align="center">
+  <img src="images/confirmation-pipeline-for-change-step20.png" alt="Confirmation Step 20" width="600"/>
+</p>
