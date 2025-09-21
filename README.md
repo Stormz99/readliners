@@ -6,13 +6,13 @@ A modern Flask-based bookstore application with complete CRUD functionality, dep
 
 ## Features
 
-- **📖 Book Management**: Complete CRUD operations for book inventory
-- **🎨 Modern UI**: Responsive design with beautiful animations
-- **🏗️ Infrastructure as Code**: Terraform modules for AWS deployment
-- **🔄 CI/CD Pipeline**: Automated deployment with GitHub Actions
-- **🔒 Security**: Best practices with proper access controls
-- **📊 Analytics**: Real-time bookstore statistics
-- **🧪 Testing**: Unit tests included
+**Book Management**: Complete CRUD operations for book inventory
+**Modern UI**: Responsive design with beautiful animations
+**Infrastructure as Code**: Terraform modules for AWS deployment
+**CI/CD Pipeline**: Automated deployment with GitHub Actions
+**Security**: Best practices with proper access controls
+**Analytics**: Real-time bookstore statistics
+**Testing**: Unit tests included
 
 ## Architecture
 
@@ -28,7 +28,7 @@ A modern Flask-based bookstore application with complete CRUD functionality, dep
                                            └─────────────────┘
 ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 readliners-bookstore/
@@ -63,7 +63,7 @@ readliners-bookstore/
     └── readliners.service
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - AWS CLI configured with appropriate credentials
